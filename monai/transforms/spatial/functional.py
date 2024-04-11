@@ -285,7 +285,7 @@ def flip(image, sp_axes, lazy, transform_info):
     Flip the tensor / MetaTensor according to `sp_axes`.
     """
 
-    if isinstance(image.MetaTensor):
+    if isinstance(image, MetaTensor):
         if image.kind == Kind.RASTER:
             return flip_raster(image, sp_axes, lazy, transform_info)
         elif image.kind == Kind.GEOM:
