@@ -57,6 +57,18 @@ def get_resample_mode(matrix, input_shape, output_shape, atol):
     return ResampleMode.INTERPOLATE
 
 
+def to_grid_sample_pad_mode(padding_mode):
+
+    if padding_mode == "constant":
+        return GridSamplePadMode.ZEROS
+    elif padding_mode == "replicate":
+        return GridSamplePadMode.BORDER
+    elif padding_mode == "reflect":
+        return GridSamplePadMode.REFLECTION
+    else:
+        return padding_mode
+
+
 def resampling_parameter_map(keyword, first, second, resample_policy, ndims):
     """
     "resample policies: strict, equivalent, relaxed
@@ -435,10 +447,12 @@ class ResampleImpl:
                 img_t.unsqueeze(0),
                 grid_t.unsqueeze(0).to(img_t),
                 mode=GridSampleMode(_interp_mode),
-                padding_mode=GridSamplePadMode(_padding_mode),
+                padding_mode=to_grid_sample_pad_mode(_padding_mode),
                 align_corners=True,
             )[0]
-        out_val, *_ = convert_to_dst_type(out, dst=img, dtype=np.float32)
+        # out_val, *_ = convert_to_dst_type(out, dst=img, dtype=np.float32)
+        out_val, *_ = convert_to_dst_type(out, dst=img, dtype=_dtype)
+
         return out_val
 
 

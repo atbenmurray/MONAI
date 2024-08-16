@@ -4,6 +4,8 @@ import numpy as np
 
 from monai.transforms.croppad.functional import croppad
 
+import torch
+
 
 class TestCropPad(unittest.TestCase):
 
@@ -24,3 +26,10 @@ class TestCropPad(unittest.TestCase):
         actual = croppad(img, crop_spans, lazy_evaluation=True)
         # print(actual.pending_operations[0])
         print(img_shape, crop_spans, actual.pending_operations[0].matrix.data[:2, -1])
+
+
+class TestCenterCropPad(unittest.TestCase):
+
+    def test_croppad_functional(self, image_shape, crop_shape):
+        img = np.arange(np.prod(image_shape)).reshape((1,) + image_shape)
+        img = torch.tensor.as_tensor(img)

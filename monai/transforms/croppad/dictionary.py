@@ -26,7 +26,7 @@ import torch
 
 from monai.transforms.spatial.functional import get_pending_shape
 from monai.transforms.traits import RandomizableTrait
-from monai.transforms.croppad.functional import croppad
+from monai.transforms.croppad.functional import croppad, resize_with_pad_or_crop
 from monai.transforms.croppad.randomizer import CropRandomizer
 from monai.transforms.inverse import InvertibleTransform
 from monai.transforms.lazy.functional import invert
@@ -177,6 +177,42 @@ class RandCropPadd(MapTransform, InvertibleTransform, LazyTransform, Randomizabl
 
     def inverse(self, data):
         return invert(data, self.lazy)
+
+
+class ResizeWithPadOrCropd(MapTransform, InvertibleTransform, LazyTransform):
+
+    def __init__(
+            self,
+            keys,
+            spatial_size,
+            padding_mode="zeros",
+            allow_missing_keys=False,
+            method="symmetric",
+            lazy: bool = False
+    ):
+        MapTransform.__init__(self, keys, allow_missing_keys=allow_missing_keys)
+        LazyTransform.__init__(self, lazy)
+        self.spatial_size = spatial_size
+        self.padding_mode = ensure_tuple_rep(padding_mode, len(self.keys))
+        self.method = method
+
+    def __call__(self, data):
+        rd = dict(data)
+
+        for key, _padding_mode in self.key_iterator(rd, self.padding_mode):
+            rd[key] = resize_with_pad_or_crop(
+                rd[key], spatial_size=self.spatial_size, padding_mode=_padding_mode,
+                method=self.method, lazy=self.lazy
+            )
+
+        return rd
+
+    def inverse(self, data):
+        rd = dict(data)
+
+        for key in self.key_iterator(rd):
+            rd[key] = invert(rd[key], self.lazy)
+        return rd
 
 
 CropPadD = CropPadDict = CropPadd

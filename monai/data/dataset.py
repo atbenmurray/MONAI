@@ -93,6 +93,7 @@ class Dataset(_TorchDataset):
         Fetch single data item from `self.data`.
         """
         data_i = self.data[index]
+        data_i['ds_index'] = index
         return apply_transform(self.transform, data_i) if self.transform is not None else data_i
 
     def __getitem__(self, index: int | slice | Sequence[int]):

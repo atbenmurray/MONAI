@@ -18,6 +18,8 @@ import torch
 from parameterized import parameterized
 
 from monai.transforms import ResizeWithPadOrCropd
+import monai.transforms.croppad.dictionary as lcd
+import monai.transforms.croppad.old_dictionary as tcd
 from tests.utils import TEST_NDARRAYS_ALL, pytorch_after
 
 TEST_CASES = [
@@ -50,12 +52,37 @@ class TestResizeWithPadOrCropd(unittest.TestCase):
             ):
                 continue
             padcropper = ResizeWithPadOrCropd(**input_param)
-            input_data["img"] = p(input_data["img"])
-            result = padcropper(input_data)
+            data = input_data.copy()
+            data["img"] = p(input_data["img"])
+            result = padcropper(data)
             np.testing.assert_allclose(result["img"].shape, expected_val)
             inv = padcropper.inverse(result)
-            for k in input_data:
-                self.assertTupleEqual(inv[k].shape, input_data[k].shape)
+            for k in data:
+                self.assertTupleEqual(inv[k].shape, data[k].shape)
+
+            l_input_param = input_param.copy()
+            l_input_param["padding_mode"] = input_param["mode"]
+            del l_input_param["mode"]
+            l_padcropper = lcd.ResizeWithPadOrCropd(lazy=False, **l_input_param)
+            l_data = input_data.copy()
+            l_data["img"] = p(input_data["img"])
+            l_result = l_padcropper(l_data)
+            self.assertSequenceEqual(l_result["img"].shape, expected_val)
+            self.assertTrue(torch.allclose(l_result["img"], result["img"]))
+
+    def test_compare_trad_and_lazy(self):
+        # print(len(entries))
+        spatial_size = (40, 56, 40)
+        tcrop = tcd.ResizeWithPadOrCropd(keys=('image',), spatial_size=spatial_size)
+        lcrop = lcd.ResizeWithPadOrCropd(keys=('image',), spatial_size=spatial_size, lazy=False)
+        rows = 40
+
+        s_img = np.arange(0, 48 * 48 * 48, dtype=np.int32).reshape((1, 48, 48, 48))
+        data = {'image': s_img}
+        image = data['image']
+        t_image = tcrop(data)['image']
+        l_image = lcrop(data)['image']
+        print(image.dtype, t_image.dtype, l_image.dtype)
 
 
 if __name__ == "__main__":

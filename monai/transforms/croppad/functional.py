@@ -22,7 +22,14 @@ from monai.transforms.lazy.functional import extents_from_shape, shape_from_exte
 # from monai.transforms.meta_matrix import MatrixFactory
 from monai.transforms.lazy.utils import MetaMatrix
 from monai.transforms.spatial.functional import get_input_shape_and_dtype, transform_shape
-from monai.utils import GridSamplePadMode, NumpyPadMode, convert_to_tensor, LazyAttr
+from monai.utils import (
+    GridSamplePadMode,
+    LazyAttr,
+    Method,
+    NumpyPadMode,
+    PytorchPadMode,
+    convert_to_tensor,
+)
 
 
 def transform_from_slices(input_shape, slices):
@@ -112,3 +119,28 @@ def pad(
         "value": value
     }
     return lazily_apply_op(img_, MetaMatrix(transform, metadata), lazy)
+
+
+def resize_with_pad_or_crop(
+        img: torch.Tensor,
+        spatial_size: Sequence[int],
+        method: str = Method.SYMMETRIC,
+        padding_mode: str = "zeros",
+        lazy: Optional[bool] = True,
+):
+    spatial_dims = img.ndim - 1
+    if len(spatial_size) != spatial_dims:
+        raise ValueError(f"spatial_size {spatial_size} must have the same length as spatial dimensions {spatial_dims}")
+    src_shape = img.shape[1:]
+
+    spans = list()
+    for s in range(spatial_dims):
+        delta = src_shape[s] - spatial_size[s]
+        d_s = delta // 2
+        d_e = delta - d_s
+        if delta < 0:
+            d_s, d_e = d_e, d_s
+
+        spans.append(slice(d_s, src_shape[s] - d_e))
+
+    return croppad(img, spans, padding_mode=padding_mode, lazy=lazy)

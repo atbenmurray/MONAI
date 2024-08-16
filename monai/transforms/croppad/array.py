@@ -23,13 +23,14 @@ from monai.config.type_definitions import NdarrayOrTensor
 from monai.transforms.traits import RandomizableTrait, MultiSampleTrait
 from monai.transforms.croppad.functional import (
     pad,
-    croppad
+    croppad,
+    resize_with_pad_or_crop,
 )
 from monai.transforms.croppad.randomizer import CropRandomizer
 from monai.transforms.inverse import InvertibleTransform
 from monai.transforms.lazy.functional import invert
 from monai.transforms.transform import LazyTransform
-from monai.utils import GridSamplePadMode
+from monai.utils import GridSamplePadMode, Method
 
 
 __all__ = [
@@ -169,3 +170,32 @@ class RandomCropPadMultiSample(
 
     def set_random_state(self, seed=None, state=None):
         self.op.set_random_state(seed, state)
+
+
+class ResizeWithPadOrCrop(InvertibleTransform, LazyTransform):
+
+    def __init__(
+        self,
+        spatial_size: Sequence[int],
+        method: str = Method.SYMMETRIC,
+        mode: str = "zeros",
+        lazy: bool = False,
+        **pad_kwargs,
+    ):
+        self.spatial_size = spatial_size
+        self.method = method
+        self.mode = mode
+        self.pad_kwargs = pad_kwargs
+        self.lazy = lazy
+
+    def __call__(
+        self,
+        img: torch.Tensor,
+    ):
+        img_t = resize_with_pad_or_crop(
+            img, self.spatial_size, self.method, self.mode, lazy=self.lazy
+        )
+        return img_t
+
+    def inverse(self, data):
+        return invert(data, self.lazy)

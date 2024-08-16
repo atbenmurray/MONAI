@@ -62,6 +62,17 @@ class TestResizeWithPadOrCrop(unittest.TestCase):
             self.assertIsInstance(inv, MetaTensor)
             self.assertEqual(inv.applied_operations, [])
 
+    def test_resize_with_pad_or_crop_lazy(self):
+        import monai.transforms.croppad.old_array as coa
+        import monai.transforms.croppad.functional as clf
+        dims = (1, 7, 7)
+        item_count = dims[0] * dims[1] * dims[2]
+        img = torch.tensor(np.arange(0, item_count, dtype=float).reshape(*dims))
+        dest_spatial_size = (10, 10)
+        img2 = clf.resize_with_pad_or_crop(img, spatial_size=dest_spatial_size, lazy=False)
+        cp = coa.ResizeWithPadOrCrop(spatial_size=dest_spatial_size)
+        img3 = cp(img)
+        print(img2.shape, img3.shape)
 
 if __name__ == "__main__":
     unittest.main()

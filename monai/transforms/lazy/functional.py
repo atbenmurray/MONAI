@@ -45,7 +45,7 @@ def apply_pending(
         pending: list | None = None,
         mode: str | int | None = None,
         padding_mode: str | None = None,
-        dtype=np.float64,
+        dtype: Any | None = np.float64,
         align_corners: bool | None = None,
         track_meta: bool | None = True
 ):
@@ -348,6 +348,7 @@ def lazily_apply_op(
           op: the MetaMatrix containing the transform and metadata
           lazy_evaluation: a boolean flag indicating whether to apply the operation lazily
     """
+
     if isinstance(tensor, MetaTensor):
         tensor.push_pending_operation(op)
         if lazy_evaluation is False:
