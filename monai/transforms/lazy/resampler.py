@@ -4,6 +4,8 @@ import warnings
 
 from typing import Sequence
 
+import itertools as it
+
 import numpy as np
 
 import torch
@@ -27,7 +29,7 @@ from monai.transforms.lazy.utils import AffineMatrix, check_matrix, is_grid_shap
     is_matrix_shaped, check_axes, get_scaling_factors
 from monai.utils import LazyAttr, convert_data_type, convert_to_dst_type, TraceKeys, convert_to_tensor, fall_back_tuple, \
     GridSampleMode, GridSamplePadMode, TransformBackends, look_up_option, convert_to_cupy, convert_to_numpy, \
-    optional_import, SplineMode, NdimageMode
+    optional_import, SplineMode, NdimageMode, NumpyPadMode
 
 cupy, _ = optional_import("cupy")
 cupy_ndi, _ = optional_import("cupyx.scipy.ndimage")
@@ -65,6 +67,17 @@ def to_grid_sample_pad_mode(padding_mode):
         return GridSamplePadMode.BORDER
     elif padding_mode == "reflect":
         return GridSamplePadMode.REFLECTION
+    else:
+        return padding_mode
+
+
+def to_numpy_pad_mode(padding_mode):
+    if padding_mode == "zeros":
+        return NumpyPadMode.CONSTANT
+    elif padding_mode in ("border", "replicate"):
+        return NumpyPadMode.EDGE
+    elif padding_mode == "reflection":
+        return NumpyPadMode.REFLECT
     else:
         return padding_mode
 
@@ -111,6 +124,102 @@ def resampling_parameter_map(keyword, first, second, resample_policy, ndims):
     }
 
 
+def _tensor_based_resample(
+        data: torch.Tensor,
+        spatial_size: Sequence[int],
+        rotations: Sequence[int] | None = None,
+        translations: Sequence[int] | None = None,
+        padding_mode: str = "constant",
+        **kwargs,
+):
+    """
+    -----------
+    1100000000000000000001111111111
+    1098765432101234567890123456789
+    ********
+               xxxxxxxxxxx           -> (-11, 14)
+             ********
+               xxxxxxxxxxx           -> (-2, 5)
+              ********
+               xxxxxxxxxxx           -> (-1, 4)
+               ********
+               xxxxxxxxxxx           -> (0, 3)
+                ********
+               xxxxxxxxxxx           -> (1, 2)
+                 ********
+               xxxxxxxxxxx           -> (2, 1)
+
+
+             ********
+               xxxxxxx               -> (-2, 1)
+              ********
+               xxxxxxx               -> (-1, 0)
+               ********
+               xxxxxxx               -> (0, -1)
+                ********
+               xxxxxxx               -> (1, -2)
+                 ********
+               xxxxxxx               -> (2, -3)
+
+    """
+    src_shape = data.shape
+    # print(src_shape)
+    spatial_dims = len(src_shape) - 1
+
+    translations_ = tuple([0] * len(src_shape)) if translations is None else translations
+
+    if len(src_shape) != len(spatial_size):
+        raise ValueError(f"data.shape {src_shape} and dest_shape {spatial_size} must have the "
+                         "same number of dimensions.")
+
+    deltas = [(0, 0)]
+    pads = [(0, 0)]
+    trims = [(0, 0)]
+    for s in range(1, len(src_shape)):
+        delta = spatial_size[s] - src_shape[s]
+        # if delta == 0:
+        #     deltas.append((0, 0))
+        #     pads.append((0, 0))
+        # else:
+        d_s = delta // 2
+        d_e = delta - d_s
+        if delta < 0:
+            d_s, d_e = d_e, d_s
+        d_s, d_e = d_s - translations_[s], d_e + translations_[s]
+        deltas.append((d_s, d_e))
+        pads.append((max(0, d_s), max(0, d_e)))
+        trims.append((min(0, d_s), min(0, d_e)))
+
+    # neg_or_zero_deltas = tuple(d if sum(d) < 0 else (0, 0) for d in deltas)
+    # pre_pad_shape = tuple(
+    #     (-d[0], s+d[1]) for s, d in zip(src_shape, neg_or_zero_deltas)
+    # )
+    pre_pad_shape = tuple(
+        (-d[0], s+d[1]) for s, d in zip(src_shape, trims)
+    )
+    slices = tuple(slice(*s) for s in pre_pad_shape)
+    pre_pad = data[slices]
+    # print("pre_pad:", pre_pad.shape)
+
+    # pads = tuple(it.chain.from_iterable(pads))
+    # if spatial_dims == 2:
+    #     pads = (pads[-1][0], pads[-1][1], pads[-2][0], pads[-2][1])
+    # else:
+    #     pads = (pads[-3][0], pads[-3][1], pads[-1][0], pads[-1][1], pads[-2][0], pads[-2][1])
+    # print("pre_pad.shape", pre_pad.shape)
+    # print("pads", pads)
+    # dest = torch.nn.functional.pad(pre_pad, pads, mode=padding_mode)
+
+    dest = np.pad(pre_pad, pads, mode=padding_mode)
+    tdest = MetaTensor(dest)
+    if isinstance(data, MetaTensor):
+        tdest.copy_meta_from(data)
+
+    # print("tdest:", type(tdest), tdest.shape)
+    # return pre_pad, tdest
+    return tdest
+
+
 def _generic_resample(data: torch.Tensor, matrix: NdarrayOrTensor, kwargs: dict | None = None):
     """
     This is a minimal implementation of resample that always uses Affine.
@@ -139,6 +248,8 @@ def _generic_resample(data: torch.Tensor, matrix: NdarrayOrTensor, kwargs: dict 
                 # TODO: change to use flips/permutations
                 resampler = Resampler(affine=matrix, image_only=True, **init_kwargs)
                 return resampler(img=data, **call_kwargs)
+                # call_kwargs['padding_mode'] = to_numpy_pad_mode(call_kwargs['padding_mode'])
+                # return _tensor_based_resample(data, (1,) + init_kwargs['spatial_size'], **call_kwargs)
             else:  # interpolate
                 # print("interpolate resample")
                 # TODO: change to use interpolator

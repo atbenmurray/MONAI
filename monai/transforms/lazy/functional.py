@@ -45,7 +45,7 @@ def apply_pending(
         pending: list | None = None,
         mode: str | int | None = None,
         padding_mode: str | None = None,
-        dtype: Any | None = np.float64,
+        dtype: Any | None = None, # np.float64,
         align_corners: bool | None = None,
         track_meta: bool | None = True
 ):
